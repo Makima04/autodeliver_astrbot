@@ -5,13 +5,33 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+class CustomFilter:
+    """替身：AstrBot 的自定义过滤器基类。"""
+
+    def __init__(self, raise_error: bool = True, **kwargs) -> None:
+        self.raise_error = raise_error
+
+    def filter(self, event, cfg) -> bool:  # pragma: no cover - 由子类实现
+        raise NotImplementedError
+
+
 class _Filter:
     """替身：装饰器全部原样返回函数，不做真实的事件过滤。"""
+
+    CustomFilter = CustomFilter
 
     def command(self, name: str, alias: set[str] | None = None, priority: int = 0):
         def deco(func: Callable):
             func._command = name
             func._alias = alias or set()
+            return func
+
+        return deco
+
+    def custom_filter(self, custom_type_filter, *args, **kwargs):
+        def deco(func: Callable):
+            func._custom_filter = custom_type_filter
+            func._custom_filter_kwargs = kwargs
             return func
 
         return deco

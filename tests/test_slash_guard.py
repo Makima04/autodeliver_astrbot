@@ -89,6 +89,21 @@ async def main() -> int:
     out = await collect(plugin.guard_unmatched_slash(ev))
     check("放行（fail-open）", (not ev.is_stopped()) and out == [])
 
+    print("\n---- 过滤器本身：只对 / 开头的事件生效 ----")
+    guard_filter = plugin_main.SlashCommandOnly(True)
+    check(
+        "/随便 通过过滤器",
+        guard_filter.filter(AstrMessageEvent("随便", raw="/随便"), {}) is True,
+    )
+    check(
+        "普通私聊不通过过滤器",
+        guard_filter.filter(AstrMessageEvent("今天天气", raw="今天天气"), {}) is False,
+    )
+    check(
+        "群里闲聊不通过过滤器（否则会误唤醒）",
+        guard_filter.filter(AstrMessageEvent("三金", raw="三金", private=False), {}) is False,
+    )
+
     await plugin.terminate()
     print()
     if failures:

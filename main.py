@@ -64,6 +64,32 @@ except ImportError:  # pragma: no cover
 
 PLUGIN_NAME = "autodeliver_astrbot"
 
+
+def _raw_message_text(event: AstrMessageEvent) -> str:
+    """取唤醒前缀被剥掉之前的原始文本。
+
+    AstrBot 的唤醒阶段会把 wake_prefix（现在含 ``/``）从 ``event.message_str``
+    里剥掉，所以判断「这条消息到底是不是斜杠开头」只能看 ``message_obj``。
+    """
+    obj = getattr(event, "message_obj", None)
+    raw = getattr(obj, "message_str", None) if obj is not None else None
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return ""
+
+
+class SlashCommandOnly(filter.CustomFilter):
+    """只匹配「原始消息以 / 开头」的事件。
+
+    必须卡在过滤器这一层：AstrBot 的唤醒阶段只要有任何 handler 的 filter 通过，
+    就会把事件标记成「已唤醒」。如果用 ``@filter.regex(r"^")`` 兜底，群里每一条
+    闲聊都会被判成唤醒命令，机器人就会对所有人说话。
+    """
+
+    def filter(self, event: AstrMessageEvent, cfg: Any) -> bool:
+        return _raw_message_text(event).startswith("/")
+
+
 # 搜索指令的三种访问模式
 SEARCH_MODES = ("all", "blacklist", "whitelist")
 SEARCH_MODE_LABELS = {
@@ -319,19 +345,6 @@ class XianyuAutoDeliverPlugin(Star):
 
     # ------------------------------------------------------------ 斜杠指令守卫
     @staticmethod
-    def _raw_message_text(event: AstrMessageEvent) -> str:
-        """取唤醒前缀被剥掉之前的原始文本。
-
-        AstrBot 的唤醒阶段会把 wake_prefix（现在含 ``/``）从 ``event.message_str``
-        里剥掉，所以判断「这条消息到底是不是斜杠开头」只能看 ``message_obj``。
-        """
-        obj = getattr(event, "message_obj", None)
-        raw = getattr(obj, "message_str", None) if obj is not None else None
-        if isinstance(raw, str) and raw.strip():
-            return raw.strip()
-        return ""
-
-    @staticmethod
     def _matches_activated_command(event: AstrMessageEvent, body: str) -> bool:
         """body 是否命中本次事件里某个已激活的指令过滤器。"""
         try:
@@ -355,7 +368,7 @@ class XianyuAutoDeliverPlugin(Star):
                         return True
         return False
 
-    @filter.regex(r"^", priority=-999)
+    @filter.custom_filter(SlashCommandOnly, priority=-999)
     async def guard_unmatched_slash(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
         """兜底：``/`` 开头但没有任何指令认领的消息，直接吞掉，不落到大模型。
 
@@ -363,7 +376,7 @@ class XianyuAutoDeliverPlugin(Star):
         LLM 并让模型回一句毫无意义的话。这里只在「确实没有指令匹配」时拦截，
         ``/help``、``/闲鱼扫码`` 这类正常指令不受影响。
         """
-        raw = self._raw_message_text(event)
+        raw = _raw_message_text(event)
         if not raw.startswith("/"):
             return
 
