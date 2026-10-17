@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 安装依赖
+        run: pip install ruff httpx qrcode
+      - name: Ruff 检查
+        run: ruff check .
+      - name: 语法检查
+        run: python -m py_compile main.py api.py summary.py tests/smoke_api.py tests/test_plugin_local.py

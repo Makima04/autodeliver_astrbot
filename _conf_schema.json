@@ -1,0 +1,72 @@
+{
+  "base_url": {
+    "description": "AutoDeliver 后台地址",
+    "type": "string",
+    "default": "http://127.0.0.1:8080",
+    "hint": "填 AutoDeliver 服务地址，例如 http://127.0.0.1:8080 或 http://服务器IP:8080"
+  },
+  "api_token": {
+    "description": "静态 API Token（可选）",
+    "type": "string",
+    "secret": true,
+    "default": "",
+    "hint": "填 AutoDeliver config.toml 里的 [auth] session_token 可以免登录；留空则用账号密码登录"
+  },
+  "admin_username": {
+    "description": "AutoDeliver 管理员账号",
+    "type": "string",
+    "default": "admin"
+  },
+  "admin_password": {
+    "description": "AutoDeliver 管理员密码",
+    "type": "string",
+    "secret": true,
+    "default": "",
+    "hint": "填了之后可以直接发 /闲鱼登录 免参数登录；不填则需 /闲鱼登录 <用户名> <密码>"
+  },
+  "admin_qq": {
+    "description": "允许使用指令的 QQ 号白名单",
+    "type": "list",
+    "default": [],
+    "hint": "留空时指令只能在私聊使用；填上 QQ 号后可在群里使用（高危指令会额外做私聊限制）"
+  },
+  "enable_llm_summary": {
+    "description": "用大模型总结搜索结果",
+    "type": "bool",
+    "default": true,
+    "hint": "关闭后使用插件内置的模板化行情摘要"
+  },
+  "summary_timeout": {
+    "description": "大模型总结超时（秒）",
+    "type": "int",
+    "default": 45
+  },
+  "search_top_n": {
+    "description": "搜索结果展示条数",
+    "type": "int",
+    "default": 5,
+    "hint": "每次搜索展示多少个最便宜的商品"
+  },
+  "search_cooldown": {
+    "description": "单人搜索冷却（秒）",
+    "type": "int",
+    "default": 3,
+    "hint": "防止刷接口被闲鱼限流"
+  },
+  "qr_poll_interval": {
+    "description": "扫码状态轮询间隔（秒）",
+    "type": "int",
+    "default": 3
+  },
+  "qr_poll_timeout": {
+    "description": "扫码等待超时（秒）",
+    "type": "int",
+    "default": 180
+  },
+  "request_timeout": {
+    "description": "调用 AutoDeliver 的超时（秒）",
+    "type": "int",
+    "default": 30,
+    "hint": "搜索和发货巡检较慢时可以调大"
+  }
+}
