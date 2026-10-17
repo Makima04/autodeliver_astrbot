@@ -1,6 +1,8 @@
 """AstrBot 插件：把 AutoDeliver（闲鱼自动发货平台）接到 QQ / 其他 IM 里。
 
 支持的能力：
+- /闲鱼            指令总览（菜单）
+- /闲鱼 列表       全部指令 + 功能说明（含别名 / 权限 / 备注）
 - /闲鱼登录        登录 AutoDeliver 管理端（拿 Bearer token 并落盘复用）
 - /闲鱼状态        平台 + 账号 + 订单概览
 - /闲鱼账号        已绑定闲鱼账号列表
@@ -24,6 +26,7 @@ import json
 import os
 import time
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -116,29 +119,171 @@ DEFAULTS: dict[str, Any] = {
     "request_timeout": 30,
 }
 
-HELP_TEXT = """🐟 闲鱼自动发货助手
+# 指令权限标记
+PERM_ALL = "all"  # 任何人
+PERM_SEARCH = "search"  # 受 search_access_mode 控制
+PERM_ADMIN = "admin"  # 仅 admin_qq 名单
 
-【管理员指令】仅管理员 QQ 可用（插件配置 admin_qq）
-/闲鱼登录 <用户名> <密码>   登录 AutoDeliver（私聊执行）
-/闲鱼状态                  平台 / 账号 / 订单概览
-/闲鱼订单                  订单统计
-/闲鱼账号                  已绑定账号列表
-/闲鱼扫码                  发二维码，用闲鱼App扫码登录
-/闲鱼cookie <Cookie>       用 Cookie 登录（私聊执行）
-/闲鱼校验 <账号ID>         远端验签
-/闲鱼商品 <账号ID>         查看该账号商品
-/闲鱼同步 <账号ID>         从闲鱼同步商品
-/闲鱼删除 <账号ID>         删除账号（需再发一次「确认」）
-/闲鱼发货 [账号ID]         立即巡检并自动发货
-/闲鱼推送 绑定|取消|查看    搜索结果额外推送到本会话
-/闲鱼权限                  查看当前权限配置
+PERM_LABELS = {
+    PERM_ALL: "🌐 任何人",
+    PERM_SEARCH: "🌐 公开（按搜索权限）",
+    PERM_ADMIN: "🔐 仅管理员",
+}
 
-【公开指令】受 search_access_mode 控制
-/闲鱼搜索 <关键词> [--min 100] [--max 500] [--sort 价格升序] [--top 5]
-/闲鱼                       查看本菜单
 
-搜索模式：all=任何人 / blacklist=黑名单外 / whitelist=仅白名单
-提示：关键词可以用空格分开，例如 /闲鱼搜索 塞尔达 王国之泪"""
+@dataclass(frozen=True)
+class CommandSpec:
+    """一条指令的元数据。菜单（/闲鱼）与清单（/闲鱼 列表）都由它生成。"""
+
+    group: str
+    usage: str
+    desc: str
+    perm: str = PERM_ALL
+    alias: tuple[str, ...] = ()
+    note: str = ""
+
+
+# 单一事实来源：新增指令时只改这里，菜单、清单、README 表格才对得上
+COMMAND_SPECS: tuple[CommandSpec, ...] = (
+    CommandSpec("通用", "/闲鱼", "指令总览（菜单）", alias=("xy", "闲鱼帮助", "闲鱼菜单")),
+    CommandSpec(
+        "通用",
+        "/闲鱼 列表",
+        "全部指令与功能说明（就是本清单）",
+        alias=("闲鱼列表", "闲鱼指令", "闲鱼清单"),
+    ),
+    CommandSpec(
+        "平台",
+        "/闲鱼登录 <用户名> <密码>",
+        "登录 AutoDeliver 管理端，token 落盘复用；不带参数则用插件配置里的账号密码",
+        PERM_ADMIN,
+        alias=("闲鱼登陆",),
+        note="带密码时仅私聊",
+    ),
+    CommandSpec("平台", "/闲鱼状态", "平台登录态 + 闲鱼账号 + 订单概览", PERM_ADMIN),
+    CommandSpec(
+        "平台",
+        "/闲鱼权限",
+        "查看当前生效的管理员名单与搜索模式",
+        PERM_ADMIN,
+        alias=("闲鱼权限查看",),
+    ),
+    CommandSpec(
+        "账号管理",
+        "/闲鱼扫码",
+        "生成闲鱼登录二维码发到聊天里，后台轮询扫码结果并主动播报",
+        PERM_ADMIN,
+        alias=("闲鱼二维码",),
+    ),
+    CommandSpec(
+        "账号管理",
+        "/闲鱼cookie <Cookie>",
+        "用 goofish 的 Cookie 添加 / 更新闲鱼账号并远端验签",
+        PERM_ADMIN,
+        alias=("闲鱼Cookie",),
+        note="仅私聊",
+    ),
+    CommandSpec(
+        "账号管理",
+        "/闲鱼账号",
+        "已绑定的闲鱼账号列表（状态 / 登录方式 / seller_id / 最近校验）",
+        PERM_ADMIN,
+    ),
+    CommandSpec(
+        "账号管理",
+        "/闲鱼校验 <账号ID>",
+        "调远端验签一个闲鱼账号，返回 valid 与说明",
+        PERM_ADMIN,
+        alias=("闲鱼验签",),
+    ),
+    CommandSpec(
+        "账号管理",
+        "/闲鱼删除 <账号ID>",
+        "解绑并删除闲鱼账号（连登录凭据、连接日志一起删）",
+        PERM_ADMIN,
+        note="需 60 秒内再发「确认」",
+    ),
+    CommandSpec(
+        "商品",
+        "/闲鱼商品 [账号ID]",
+        "查看该账号已入库的商品（价格由「分」转成元）",
+        PERM_ADMIN,
+        note="只有一个账号时可省略 ID",
+    ),
+    CommandSpec(
+        "商品", "/闲鱼同步 <账号ID>", "从闲鱼远端拉取商品并入库", PERM_ADMIN
+    ),
+    CommandSpec(
+        "订单 / 发货",
+        "/闲鱼订单",
+        "订单统计：累计 / 今日 / 待发货 / 已发货 / 成交额",
+        PERM_ADMIN,
+        alias=("闲鱼订单统计",),
+    ),
+    CommandSpec(
+        "订单 / 发货",
+        "/闲鱼发货 [账号ID]",
+        "立即巡检闲鱼会话并执行自动发货",
+        PERM_ADMIN,
+        alias=("闲鱼巡检",),
+        note="通常要几十秒",
+    ),
+    CommandSpec(
+        "搜索",
+        "/闲鱼搜索 <关键词> [--min 100] [--max 500] [--sort 价格升序] [--top 5]",
+        "全网搜索 + 大模型行情总结",
+        PERM_SEARCH,
+        alias=("xy搜索", "闲鱼查价"),
+        note="受 search_access_mode 控制",
+    ),
+    CommandSpec(
+        "其它",
+        "/闲鱼推送 绑定|取消|查看|清空",
+        "把搜索摘要额外推送到指定会话（群指令触发、摘要回到自己 QQ）",
+        PERM_ADMIN,
+    ),
+)
+
+# /闲鱼 后面跟这些词时，输出详细清单而不是简版菜单
+LIST_WORDS = {
+    "列表",
+    "清单",
+    "指令",
+    "命令",
+    "全部",
+    "所有",
+    "list",
+    "ls",
+}
+
+# 明确要看菜单的说法，避免被当成「未知子命令」
+MENU_WORDS = {"帮助", "菜单", "说明", "help", "menu", "?", "？"}
+
+
+def build_menu() -> str:
+    """简版菜单：一行一条指令，群里刷屏也不至于太长。"""
+    lines = [
+        "🐟 闲鱼自动发货助手",
+        f"共 {len(COMMAND_SPECS)} 条指令（🔐 = 仅管理员 QQ 可用）",
+        "",
+    ]
+    group = ""
+    for spec in COMMAND_SPECS:
+        if spec.group != group:
+            group = spec.group
+            lines.append(f"【{group}】")
+        tail = " 🔐" if spec.perm == PERM_ADMIN else ""
+        lines.append(f"{spec.usage} — {spec.desc}{tail}")
+    lines += [
+        "",
+        "搜索指令受 search_access_mode 控制：all=任何人 / blacklist=黑名单外 / whitelist=仅白名单",
+        "发 /闲鱼 列表 可查看每条指令的详细说明、别名与使用限制",
+    ]
+    return "\n".join(lines)
+
+
+MENU_TEXT = build_menu()
+HELP_TEXT = MENU_TEXT  # 兼容旧引用
 
 
 def _guard(func):
@@ -503,10 +648,67 @@ class XianyuAutoDeliverPlugin(Star):
         logger.info("[xianyu-autodeliver] 插件已卸载，资源已释放")
 
     # ------------------------------------------------------------------ 指令：帮助
-    @filter.command("闲鱼", alias={"xy", "闲鱼帮助", "闲鱼菜单"})
+    @filter.command(
+        "闲鱼",
+        alias={"xy", "闲鱼帮助", "闲鱼菜单", "闲鱼列表", "闲鱼指令", "闲鱼清单"},
+    )
     @_guard
     async def cmd_help(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        yield event.plain_result(HELP_TEXT)
+        """``/闲鱼`` 给菜单，``/闲鱼 列表`` 给逐条详解。"""
+        raw = (event.message_str or "").strip().lstrip("/／!！")
+        parts = raw.split(maxsplit=1)
+        head = parts[0].strip() if parts else ""
+        arg = parts[1].strip() if len(parts) > 1 else ""
+        lowered = arg.lower()
+
+        # /闲鱼列表 这类没有空格的别名，等价于 /闲鱼 列表
+        if not arg and head in ("闲鱼列表", "闲鱼指令", "闲鱼清单"):
+            lowered = "列表"
+
+        if lowered in LIST_WORDS:
+            yield event.plain_result(self._command_list_text(event))
+            return
+        if arg and lowered not in MENU_WORDS:
+            yield event.plain_result(
+                f"🤔 没有「{arg}」这个子命令，先看总览（详细说明发 /闲鱼 列表）\n\n{MENU_TEXT}"
+            )
+            return
+        yield event.plain_result(MENU_TEXT)
+
+    def _command_list_text(self, event: AstrMessageEvent) -> str:
+        """生成「全部指令 + 功能」清单，并按发送者标注他现在能不能用。"""
+        lines = [
+            "🐟 闲鱼自动发货助手 · 指令清单",
+            f"共 {len(COMMAND_SPECS)} 条｜🔐 仅管理员　🌐 公开",
+            "",
+        ]
+        group = ""
+        index = 0
+        for spec in COMMAND_SPECS:
+            if spec.group != group:
+                group = spec.group
+                lines.append(f"【{group}】")
+            index += 1
+            lines.append(f"{index}. {spec.usage}")
+            meta = [spec.desc, PERM_LABELS.get(spec.perm, spec.perm)]
+            if spec.alias:
+                meta.append("别名 " + "、".join(spec.alias))
+            if spec.note:
+                meta.append(spec.note)
+            lines.append("   " + "｜".join(meta))
+
+        is_admin = self._admin_denied(event) is None
+        mode = self._search_mode()
+        can_search = self._search_denied(event) is None
+        sender = str(event.get_sender_id())
+        lines += [
+            "",
+            f"你的身份：{sender} → {'👑 管理员' if is_admin else '👤 普通用户（仅公开指令可用）'}",
+            f"搜索模式：{mode}（{SEARCH_MODE_LABELS.get(mode, mode)}）→ "
+            f"{'✅ 你可以搜索' if can_search else '❌ 你不能搜索'}",
+            "自查权限：/闲鱼权限",
+        ]
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------ 指令：权限自查
     @filter.command("闲鱼权限", alias={"闲鱼权限查看"})
@@ -604,7 +806,7 @@ class XianyuAutoDeliverPlugin(Star):
         )
 
     # ------------------------------------------------------------------ 指令：账号列表
-    @filter.command("闲鱼账号", alias={"闲鱼列表"})
+    @filter.command("闲鱼账号", alias={"闲鱼帐号"})
     @_guard
     async def cmd_accounts(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
         if (reason := self._admin_denied(event)) is not None:

@@ -87,7 +87,7 @@ QQ 用户 ──指令──▶ AstrBot ──▶ 本插件 ──HTTP/Bearer─
 | 类别 | 指令 | 准入 |
 |---|---|---|
 | **管理员指令** | 登录、状态、订单、账号、扫码、Cookie、校验、商品、同步、删除、发货、推送、权限 | 只认 `admin_qq`；**管理员在群里也能用**（带密码/Cookie 的仍强制私聊） |
-| **公开指令** | `/闲鱼搜索`、`/闲鱼`（菜单） | 由 `search_access_mode` 决定；管理员永远放行 |
+| **公开指令** | `/闲鱼搜索`、`/闲鱼`（菜单）、`/闲鱼 列表`（指令详解） | 菜单与清单**任何人**都能看；搜索由 `search_access_mode` 决定，管理员永远放行 |
 
 `search_access_mode` 三种模式：
 
@@ -109,7 +109,8 @@ Token 保存在 `data/plugin_data/autodeliver_astrbot/auth.json`（权限 600）
 
 | 指令 | 作用 | 权限 |
 |---|---|---|
-| `/闲鱼` | 帮助菜单（别名 `xy`、`闲鱼帮助`） | 公开 |
+| `/闲鱼` | 帮助菜单（别名 `xy`、`闲鱼帮助`、`闲鱼菜单`） | 公开 |
+| `/闲鱼 列表` | **全部指令 + 功能说明**：每条带别名、权限、使用限制，并回显你自己能不能用（别名 `闲鱼列表`、`闲鱼指令`、`闲鱼清单`） | 公开 |
 | `/闲鱼搜索 <关键词> ...` | 全网搜索 + 大模型行情总结 | 受 `search_access_mode` 控制 |
 | `/闲鱼登录 <用户名> <密码>` | 登录 AutoDeliver，拿 token 并落盘（**仅私聊**，不带参数则用配置里的账号密码） | 管理员 |
 | `/闲鱼状态` | 平台登录态 + 账号概览 + 订单统计 | 管理员 |
@@ -124,6 +125,9 @@ Token 保存在 `data/plugin_data/autodeliver_astrbot/auth.json`（权限 600）
 | `/闲鱼订单` | 订单统计（累计/今日/待发货/已发货/失败/成交额） | 管理员 |
 | `/闲鱼推送 绑定\|取消\|查看\|清空` | 把摘要**额外**推送到指定会话（群指令触发、摘要回到自己 QQ 的场景） | 管理员 |
 | `/闲鱼权限` | 查看当前生效的权限配置（管理员名单、搜索模式） | 管理员 |
+
+> `/闲鱼` 是精简菜单（一行一条，适合群里刷），`/闲鱼 列表` 是逐条详解（功能 + 别名 + 权限 + 限制）。
+> 两者都由 `main.py` 里的 `COMMAND_SPECS` 生成：新增指令只改这张表，菜单、清单和测试就不会各说各话。
 
 ### 搜索用法
 
@@ -199,10 +203,16 @@ AD_BASE=http://127.0.0.1:8080 AD_USER=admin AD_PASS=... python tests/smoke_api.p
 
 # 4) 斜杠守卫（离线，验证 /未知指令 不会落到大模型）
 python tests/test_slash_guard.py
+
+# 5) 指令清单（离线，验证 /闲鱼 与 /闲鱼 列表 的分支和覆盖度）
+python tests/test_command_list.py
 ```
 
 `test_permissions.py` 覆盖：管理员/非管理员在私聊与群聊的判定、搜索三种模式、
 管理员始终可搜、`admin_qq` 逗号与 UMO 写法、模式填错时的回退。
+
+`test_command_list.py` 会把 `COMMAND_SPECS` 和真实注册的 handler 对一遍：
+每条指令的用法是否出现在菜单、别名是否真的挂了装饰器，防止改了指令忘了改文案。
 
 `test_plugin_local.py` 会依次跑通：登录 → 账号列表 → 订单统计 → 商品列表 → 搜索 → 摘要/明细。
 
@@ -232,5 +242,10 @@ autodeliver_astrbot/
 ├── metadata.yaml        # AstrBot 插件元数据
 ├── _conf_schema.json    # 插件配置面板
 ├── requirements.txt
-└── tests/smoke_api.py   # 脱离 AstrBot 的端到端冒烟
+└── tests/                # 离线自测：权限 / 斜杠守卫 / 指令清单 + 端到端冒烟
+    ├── test_permissions.py
+    ├── test_slash_guard.py
+    ├── test_command_list.py
+    ├── test_plugin_local.py
+    └── smoke_api.py
 ```
