@@ -2,7 +2,7 @@ name: autodeliver_astrbot
 display_name: 闲鱼自动发货（AutoDeliver）
 desc: 把 AutoDeliver 闲鱼自动发货平台接到 QQ，用指令登录、管理闲鱼账号、搜索行情并由大模型总结后回传。
 short_desc: 在 QQ 里管理闲鱼账号与搜索行情
-version: v0.1.0
+version: v0.2.0
 author: AutoDeliver
 repo: https://github.com/Makima04/autodeliver_astrbot
 astrbot_version: ">=4.5,<5"

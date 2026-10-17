@@ -25,10 +25,29 @@
     "hint": "填了之后可以直接发 /闲鱼登录 免参数登录；不填则需 /闲鱼登录 <用户名> <密码>"
   },
   "admin_qq": {
-    "description": "允许使用指令的 QQ 号白名单",
+    "description": "管理员 QQ 号（敏感指令白名单）",
     "type": "list",
     "default": [],
-    "hint": "留空时指令只能在私聊使用；填上 QQ 号后可在群里使用（高危指令会额外做私聊限制）"
+    "hint": "登录 / 扫码 / 账号 / 商品 / 发货 等敏感指令只允许这里填的 QQ 使用。留空时敏感指令退化为「仅私聊可用」，建议务必填写"
+  },
+  "search_access_mode": {
+    "description": "搜索指令的访问模式",
+    "type": "string",
+    "options": ["all", "blacklist", "whitelist"],
+    "default": "all",
+    "hint": "all=任何人可用；blacklist=黑名单外可用；whitelist=仅白名单可用。管理员始终可以搜索"
+  },
+  "search_blacklist": {
+    "description": "搜索黑名单 QQ 号",
+    "type": "list",
+    "default": [],
+    "hint": "search_access_mode=blacklist 时生效：名单内的 QQ 不能使用 /闲鱼搜索"
+  },
+  "search_whitelist": {
+    "description": "搜索白名单 QQ 号",
+    "type": "list",
+    "default": [],
+    "hint": "search_access_mode=whitelist 时生效：只有名单内的 QQ 能使用 /闲鱼搜索"
   },
   "enable_llm_summary": {
     "description": "用大模型总结搜索结果",

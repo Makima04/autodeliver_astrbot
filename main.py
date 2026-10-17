@@ -64,12 +64,23 @@ except ImportError:  # pragma: no cover
 
 PLUGIN_NAME = "autodeliver_astrbot"
 
+# 搜索指令的三种访问模式
+SEARCH_MODES = ("all", "blacklist", "whitelist")
+SEARCH_MODE_LABELS = {
+    "all": "任何人可用",
+    "blacklist": "黑名单外可用",
+    "whitelist": "仅白名单可用",
+}
+
 DEFAULTS: dict[str, Any] = {
     "base_url": "http://127.0.0.1:8080",
     "admin_username": "admin",
     "admin_password": "",
     "api_token": "",
     "admin_qq": [],
+    "search_access_mode": "all",
+    "search_blacklist": [],
+    "search_whitelist": [],
     "enable_llm_summary": True,
     "summary_timeout": 45,
     "search_top_n": 5,
@@ -81,12 +92,10 @@ DEFAULTS: dict[str, Any] = {
 
 HELP_TEXT = """🐟 闲鱼自动发货助手
 
-【平台】
+【管理员指令】仅管理员 QQ 可用（插件配置 admin_qq）
 /闲鱼登录 <用户名> <密码>   登录 AutoDeliver（私聊执行）
 /闲鱼状态                  平台 / 账号 / 订单概览
 /闲鱼订单                  订单统计
-
-【闲鱼账号】
 /闲鱼账号                  已绑定账号列表
 /闲鱼扫码                  发二维码，用闲鱼App扫码登录
 /闲鱼cookie <Cookie>       用 Cookie 登录（私聊执行）
@@ -94,12 +103,15 @@ HELP_TEXT = """🐟 闲鱼自动发货助手
 /闲鱼商品 <账号ID>         查看该账号商品
 /闲鱼同步 <账号ID>         从闲鱼同步商品
 /闲鱼删除 <账号ID>         删除账号（需再发一次「确认」）
-
-【搜索与发货】
-/闲鱼搜索 <关键词> [--min 100] [--max 500] [--sort 价格升序] [--top 5]
 /闲鱼发货 [账号ID]         立即巡检并自动发货
 /闲鱼推送 绑定|取消|查看    搜索结果额外推送到本会话
+/闲鱼权限                  查看当前权限配置
 
+【公开指令】受 search_access_mode 控制
+/闲鱼搜索 <关键词> [--min 100] [--max 500] [--sort 价格升序] [--top 5]
+/闲鱼                       查看本菜单
+
+搜索模式：all=任何人 / blacklist=黑名单外 / whitelist=仅白名单
 提示：关键词可以用空格分开，例如 /闲鱼搜索 塞尔达 王国之泪"""
 
 
@@ -305,32 +317,90 @@ class XianyuAutoDeliverPlugin(Star):
         umo = str(getattr(event, "unified_msg_origin", "") or "")
         return "private" in umo or "FriendMessage" in umo
 
-    def _admin_ids(self) -> list[str]:
-        raw = self._cfg("admin_qq") or []
+    def _qq_list(self, key: str) -> list[str]:
+        """读取配置里的 QQ 号列表，兼容 list / 逗号分隔字符串 / UMO 写法。"""
+        raw = self._cfg(key) or []
         if isinstance(raw, str):
-            raw = [x.strip() for x in raw.split(",")]
-        ids = []
+            raw = [x.strip() for x in raw.replace("，", ",").split(",")]
+        ids: list[str] = []
         for item in raw:
             text = str(item).strip()
             if not text:
                 continue
             if ":" in text:  # 兼容 onebot:private_123 这类 UMO 写法
                 text = text.rsplit("_", 1)[-1].rsplit(":", 1)[-1]
-            ids.append(text)
+            if text and text not in ids:
+                ids.append(text)
         return ids
 
-    def _auth_error(self, event: AstrMessageEvent) -> str | None:
-        """返回 None 表示放行，否则返回拒绝理由。"""
+    def _admin_ids(self) -> list[str]:
+        return self._qq_list("admin_qq")
+
+    def _is_admin(self, event: AstrMessageEvent) -> bool:
+        return str(event.get_sender_id()) in self._admin_ids()
+
+    def _admin_denied(self, event: AstrMessageEvent) -> str | None:
+        """敏感指令（登录 / 扫码 / 账号 / 商品 / 发货…）的准入判断。
+
+        返回 None 表示放行，否则返回拒绝理由。
+        """
+        admins = self._admin_ids()
         sender = str(event.get_sender_id())
-        whitelist = self._admin_ids()
-        if whitelist:
-            if sender in whitelist:
+        if admins:
+            if sender in admins:
                 return None
-            return "⛔ 你没有权限使用这个指令（管理员 QQ 白名单可在插件配置 admin_qq 中调整）"
-        # 未配置白名单时退化为「只允许私聊」，避免群成员误操作删号
+            return (
+                "⛔ 这是管理员指令，你没有权限执行\n"
+                f"当前管理员：{'、'.join(admins)}\n"
+                "（插件配置 admin_qq 可调整）"
+            )
+        # 未配置管理员名单时退化为「仅允许私聊」，避免群成员误删账号 / 误发货
         if self._is_private(event):
             return None
-        return "⛔ 未配置管理员白名单时，指令只能在私聊里使用\n（插件配置 admin_qq 填上你的 QQ 号即可在群里用）"
+        return (
+            "⛔ 尚未配置管理员名单，指令只能在私聊里使用\n"
+            "请在插件配置 admin_qq 里填上自己的 QQ 号，之后即可在群里使用"
+        )
+
+    def _search_mode(self) -> str:
+        """搜索指令的访问模式：all / blacklist / whitelist。"""
+        raw = str(self._cfg("search_access_mode") or "all").strip().lower()
+        alias = {
+            "任何人": "all",
+            "所有人": "all",
+            "全部": "all",
+            "公开": "all",
+            "anyone": "all",
+            "黑名单": "blacklist",
+            "block": "blacklist",
+            "deny": "blacklist",
+            "白名单": "whitelist",
+            "allow": "whitelist",
+            "white": "whitelist",
+        }
+        mode = alias.get(raw, raw)
+        return mode if mode in SEARCH_MODES else "all"
+
+    def _search_denied(self, event: AstrMessageEvent) -> str | None:
+        """搜索指令的准入判断：管理员永远放行，其余按模式判定。"""
+        if self._is_admin(event):
+            return None
+
+        mode = self._search_mode()
+        if mode == "all":
+            return None
+
+        sender = str(event.get_sender_id())
+        if mode == "whitelist":
+            if sender in self._qq_list("search_whitelist"):
+                return None
+            return (
+                "⛔ 搜索目前是白名单模式，你不在名单内\n"
+                "（由管理员在插件配置 search_whitelist 中添加）"
+            )
+        if sender in self._qq_list("search_blacklist"):
+            return "⛔ 你已被限制使用搜索功能（由管理员配置）"
+        return None
 
     async def _push(self, umo: str, text: str) -> None:
         try:
@@ -358,11 +428,44 @@ class XianyuAutoDeliverPlugin(Star):
     async def cmd_help(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
         yield event.plain_result(HELP_TEXT)
 
+    # ------------------------------------------------------------------ 指令：权限自查
+    @filter.command("闲鱼权限", alias={"闲鱼权限查看"})
+    @_guard
+    async def cmd_perms(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        if (reason := self._admin_denied(event)) is not None:
+            yield event.plain_result(reason)
+            return
+
+        admins = self._admin_ids()
+        mode = self._search_mode()
+        blacklist = self._qq_list("search_blacklist")
+        whitelist = self._qq_list("search_whitelist")
+        sender = str(event.get_sender_id())
+
+        lines = ["🔐 当前权限配置", ""]
+        if admins:
+            lines.append(f"管理员名单（{len(admins)}）：{'、'.join(admins)}")
+            lines.append(f"  你（{sender}）→ {'✅ 管理员' if sender in admins else '❌ 非管理员'}")
+        else:
+            lines.append("管理员名单：未配置")
+            lines.append("  敏感指令只能私聊使用，群里一律拒绝")
+        lines.append("")
+        lines.append(f"搜索模式：{mode}（{SEARCH_MODE_LABELS.get(mode, mode)}）")
+        if mode == "blacklist":
+            lines.append(f"  黑名单（{len(blacklist)}）：{'、'.join(blacklist) or '空'}")
+        elif mode == "whitelist":
+            lines.append(f"  白名单（{len(whitelist)}）：{'、'.join(whitelist) or '空'}")
+        can_search = self._search_denied(event) is None
+        lines.append(f"  你（{sender}）→ {'✅ 可以搜索' if can_search else '❌ 不能搜索'}")
+        lines.append("")
+        lines.append("修改入口：AstrBot WebUI → 插件 → autodeliver_astrbot → 配置")
+        yield event.plain_result("\n".join(lines))
+
     # ------------------------------------------------------------------ 指令：平台登录
     @filter.command("闲鱼登录", alias={"闲鱼登陆"})
     @_guard
     async def cmd_login(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
 
@@ -399,7 +502,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼状态")
     @_guard
     async def cmd_status(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
 
@@ -424,7 +527,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼账号", alias={"闲鱼列表"})
     @_guard
     async def cmd_accounts(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
         accounts = await self.client.list_accounts()
@@ -434,7 +537,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼扫码", alias={"闲鱼二维码"})
     @_guard
     async def cmd_qrcode(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
 
@@ -534,7 +637,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼cookie", alias={"闲鱼Cookie"})
     @_guard
     async def cmd_cookie(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
         if not self._is_private(event):
@@ -561,7 +664,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼校验", alias={"闲鱼验签"})
     @_guard
     async def cmd_verify(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
 
@@ -581,7 +684,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼删除")
     @_guard
     async def cmd_delete(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
 
@@ -627,7 +730,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼商品")
     @_guard
     async def cmd_items(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
 
@@ -647,7 +750,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼同步")
     @_guard
     async def cmd_sync(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
 
@@ -669,7 +772,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼搜索", alias={"xy搜索", "闲鱼查价"})
     @_guard
     async def cmd_search(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._search_denied(event)) is not None:
             yield event.plain_result(reason)
             return
 
@@ -773,7 +876,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼发货", alias={"闲鱼巡检"})
     @_guard
     async def cmd_scan(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
 
@@ -786,7 +889,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼订单", alias={"闲鱼订单统计"})
     @_guard
     async def cmd_orders(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
         stats = await self.client.order_stats()
@@ -802,7 +905,7 @@ class XianyuAutoDeliverPlugin(Star):
     @filter.command("闲鱼推送")
     @_guard
     async def cmd_push(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
-        if (reason := self._auth_error(event)) is not None:
+        if (reason := self._admin_denied(event)) is not None:
             yield event.plain_result(reason)
             return
 

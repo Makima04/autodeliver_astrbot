@@ -63,10 +63,32 @@ QQ 用户 ──指令──▶ AstrBot ──▶ 本插件 ──HTTP/Bearer─
 | `base_url` | AutoDeliver 地址，如 `http://127.0.0.1:8080`；AstrBot 在别的机器上就填内网/公网地址 |
 | `api_token` | 填 AutoDeliver `config.toml` 的 `[auth] session_token`，可**免登录**直接用 |
 | `admin_username` / `admin_password` | 不填 `api_token` 时使用；填了之后直接发 `/闲鱼登录` 即可 |
-| `admin_qq` | 允许使用指令的 QQ 白名单。**留空时只能在私聊使用**，避免群里被人删号 |
+| `admin_qq` | **管理员 QQ 号列表**。敏感指令（登录/扫码/账号/商品/发货…）只允许名单内的人执行；留空时退化为「仅私聊可用」 |
+| `search_access_mode` | 搜索访问模式：`all`（任何人）/ `blacklist`（黑名单外）/ `whitelist`（仅白名单） |
+| `search_blacklist` / `search_whitelist` | 对应模式下的 QQ 号列表 |
 | `enable_llm_summary` | 关掉就用内置模板摘要，不消耗大模型额度 |
 | `search_top_n` / `search_cooldown` | 展示条数、单人搜索冷却（防闲鱼限流） |
 | `qr_poll_timeout` | 扫码等待时间，默认 180 秒 |
+
+### 权限模型
+
+两套规则彼此独立：
+
+| 类别 | 指令 | 准入 |
+|---|---|---|
+| **管理员指令** | 登录、状态、订单、账号、扫码、Cookie、校验、商品、同步、删除、发货、推送、权限 | 只认 `admin_qq`；**管理员在群里也能用**（带密码/Cookie 的仍强制私聊） |
+| **公开指令** | `/闲鱼搜索`、`/闲鱼`（菜单） | 由 `search_access_mode` 决定；管理员永远放行 |
+
+`search_access_mode` 三种模式：
+
+| 值 | 行为 |
+|---|---|
+| `all` | 任何人都能搜索（默认） |
+| `blacklist` | `search_blacklist` 里的人不能搜，其他人可以 |
+| `whitelist` | 只有 `search_whitelist` 里的人能搜 |
+
+也接受中文写法：`任何人` / `黑名单` / `白名单`；填错会退回 `all`。
+`/闲鱼权限` 可以随时自查当前生效的配置（管理员指令）。
 
 Token 保存在 `data/plugin_data/autodeliver_astrbot/auth.json`（权限 600），
 重启 AstrBot 后自动复用；会话过期（401）时插件会用配置的账号密码自动重登一次。
@@ -75,22 +97,23 @@ Token 保存在 `data/plugin_data/autodeliver_astrbot/auth.json`（权限 600）
 
 ## 三、指令
 
-| 指令 | 作用 |
-|---|---|
-| `/闲鱼` | 帮助菜单（别名 `xy`、`闲鱼帮助`） |
-| `/闲鱼登录 <用户名> <密码>` | 登录 AutoDeliver，拿 token 并落盘（**仅私聊**，不带参数则用配置里的账号密码） |
-| `/闲鱼状态` | 平台登录态 + 账号概览 + 订单统计 |
-| `/闲鱼账号` | 已绑定的闲鱼账号列表（状态、模式、seller_id、最近校验） |
-| `/闲鱼扫码` | 生成二维码发到聊天里，用闲鱼 App 扫码；插件后台轮询，成功后主动播报 |
-| `/闲鱼cookie <Cookie>` | Cookie 登录/更新账号（**仅私聊**，建议登录后撤回消息） |
-| `/闲鱼校验 <账号ID>` | 调远端验签，返回 `valid` 与说明 |
-| `/闲鱼删除 <账号ID>` | 先回显账号信息，60 秒内再发 `/闲鱼删除 <账号ID> 确认` 才真正删除 |
-| `/闲鱼商品 <账号ID>` | 该账号的闲鱼商品（价格从「分」转成元，标注已绑卡密） |
-| `/闲鱼同步 <账号ID>` | 从闲鱼远端拉取商品并入库 |
-| `/闲鱼搜索 <关键词> ...` | 全网搜索 + 大模型行情总结 |
-| `/闲鱼发货 [账号ID]` | 立即触发一次自动发货巡检（几十秒） |
-| `/闲鱼订单` | 订单统计（累计/今日/待发货/已发货/失败/成交额） |
-| `/闲鱼推送 绑定\|取消\|查看\|清空` | 把摘要**额外**推送到指定会话（群指令触发、摘要回到自己 QQ 的场景） |
+| 指令 | 作用 | 权限 |
+|---|---|---|
+| `/闲鱼` | 帮助菜单（别名 `xy`、`闲鱼帮助`） | 公开 |
+| `/闲鱼搜索 <关键词> ...` | 全网搜索 + 大模型行情总结 | 受 `search_access_mode` 控制 |
+| `/闲鱼登录 <用户名> <密码>` | 登录 AutoDeliver，拿 token 并落盘（**仅私聊**，不带参数则用配置里的账号密码） | 管理员 |
+| `/闲鱼状态` | 平台登录态 + 账号概览 + 订单统计 | 管理员 |
+| `/闲鱼账号` | 已绑定的闲鱼账号列表（状态、模式、seller_id、最近校验） | 管理员 |
+| `/闲鱼扫码` | 生成二维码发到聊天里，用闲鱼 App 扫码；插件后台轮询，成功后主动播报 | 管理员 |
+| `/闲鱼cookie <Cookie>` | Cookie 登录/更新账号（**仅私聊**，建议登录后撤回消息） | 管理员 |
+| `/闲鱼校验 <账号ID>` | 调远端验签，返回 `valid` 与说明 | 管理员 |
+| `/闲鱼删除 <账号ID>` | 先回显账号信息，60 秒内再发 `/闲鱼删除 <账号ID> 确认` 才真正删除 | 管理员 |
+| `/闲鱼商品 <账号ID>` | 该账号的闲鱼商品（价格从「分」转成元，标注已绑卡密） | 管理员 |
+| `/闲鱼同步 <账号ID>` | 从闲鱼远端拉取商品并入库 | 管理员 |
+| `/闲鱼发货 [账号ID]` | 立即触发一次自动发货巡检（几十秒） | 管理员 |
+| `/闲鱼订单` | 订单统计（累计/今日/待发货/已发货/失败/成交额） | 管理员 |
+| `/闲鱼推送 绑定\|取消\|查看\|清空` | 把摘要**额外**推送到指定会话（群指令触发、摘要回到自己 QQ 的场景） | 管理员 |
+| `/闲鱼权限` | 查看当前生效的权限配置（管理员名单、搜索模式） | 管理员 |
 
 ### 搜索用法
 
@@ -131,11 +154,14 @@ Token 保存在 `data/plugin_data/autodeliver_astrbot/auth.json`（权限 600）
 
 ## 五、安全设计
 
-1. **权限**：`admin_qq` 为空时指令只在私聊生效；填了白名单只有名单内的人能用。
-2. **敏感操作**：`/闲鱼登录` 带密码、`/闲鱼cookie` 一律**拒绝在群里执行**。
-3. **删除二次确认**：`/闲鱼删除 <ID>` 只是「预演」，60 秒内补一句「确认」才落库。
-4. **凭据落盘**：token 存 `data/plugin_data/.../auth.json`，`chmod 600`；Cookie 不落盘（只进 AutoDeliver 数据库）。
-5. **限流**：搜索默认 3 秒冷却，避免 QQ 群刷指令把闲鱼接口打到风控。
+1. **管理员隔离**：登录 / 扫码 / 账号 / 商品 / 发货等敏感指令只认 `admin_qq` 里的 QQ；
+   未配置名单时退化为「仅私聊」，避免群里被陌生人删号或触发发货。
+2. **搜索分级**：`search_access_mode` 支持 `all` / `blacklist` / `whitelist`，
+   让行情查询可以开给群友，而业务操作始终捏在自己手里；管理员始终能搜。
+3. **敏感操作**：`/闲鱼登录` 带密码、`/闲鱼cookie` 一律**拒绝在群里执行**。
+4. **删除二次确认**：`/闲鱼删除 <ID>` 只是「预演」，60 秒内补一句「确认」才落库。
+5. **凭据落盘**：token 存 `data/plugin_data/.../auth.json`，`chmod 600`；Cookie 不落盘（只进 AutoDeliver 数据库）。
+6. **限流**：搜索默认 3 秒冷却，避免 QQ 群刷指令把闲鱼接口打到风控。
 
 > ⚠️ AutoDeliver 默认监听 `127.0.0.1:8080`。如果 AstrBot 不在同一台机器上，
 > 请通过内网 / SSH 隧道 / 反代暴露，并务必改掉默认的 `admin123` 与静态 `session_token`。
@@ -144,16 +170,28 @@ Token 保存在 `data/plugin_data/autodeliver_astrbot/auth.json`（权限 600）
 
 ## 六、自测
 
-不需要装 AstrBot 就能验证「插件 ↔ 后端」这条线（只读，不会改任何业务数据）：
+不需要装 AstrBot 就能跑，分成两组：
 
 ```bash
 pip install httpx
+
+# 1) 权限矩阵（纯离线，不连后端、不改数据）
+python tests/test_permissions.py
+
+# 2) 指令全链路（会真的请求后端与闲鱼，只读）
+python tests/test_plugin_local.py
+AUTODELIVER_BASE_URL=http://192.168.1.161:18080 \
+AUTODELIVER_TOKEN=<config.toml 的 session_token> python tests/test_plugin_local.py
+
+# 3) 只测 HTTP 客户端
 python tests/smoke_api.py            # 默认搜 switch
-python tests/smoke_api.py 塞尔达
-AD_BASE=http://127.0.0.1:8080 AD_USER=admin AD_PASS=admin123 python tests/smoke_api.py
+AD_BASE=http://127.0.0.1:8080 AD_USER=admin AD_PASS=... python tests/smoke_api.py
 ```
 
-会依次跑通：登录 → 账号列表 → 订单统计 → 商品列表 → 搜索 → 摘要/明细/Prompt 预览。
+`test_permissions.py` 覆盖：管理员/非管理员在私聊与群聊的判定、搜索三种模式、
+管理员始终可搜、`admin_qq` 逗号与 UMO 写法、模式填错时的回退。
+
+`test_plugin_local.py` 会依次跑通：登录 → 账号列表 → 订单统计 → 商品列表 → 搜索 → 摘要/明细。
 
 ---
 
