@@ -95,6 +95,10 @@ async def main() -> int:
     check("/闲鱼 指令 → 清单", await say(p.cmd_help, "闲鱼 指令") == listing)
     check("/闲鱼 list → 清单", await say(p.cmd_help, "闲鱼 list") == listing)
     check("/闲鱼 帮助 → 菜单", await say(p.cmd_help, "闲鱼 帮助") == menu)
+    check(
+        "群里 @机器人 前缀不影响",
+        await say(p.cmd_help, "@浅野堇 /闲鱼 列表") == listing,
+    )
     unknown = await say(p.cmd_help, "闲鱼 乱写")
     check("未知子命令给提示", "没有「乱写」这个子命令" in unknown, unknown[:60])
     check("未知子命令附菜单", menu in unknown)

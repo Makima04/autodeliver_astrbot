@@ -323,6 +323,19 @@ def _strip_command(text: str) -> str:
     return parts[1].strip() if len(parts) > 1 else ""
 
 
+def _command_head_arg(text: str) -> tuple[str, str]:
+    """把消息拆成「指令名 + 其余参数」，兼容群里 @机器人 的前缀。"""
+    text = (text or "").strip()
+    while text.startswith("@"):
+        parts = text.split(maxsplit=1)
+        text = parts[1] if len(parts) > 1 else ""
+    text = text.lstrip("/／!！").strip()
+    parts = text.split(maxsplit=1)
+    if not parts:
+        return "", ""
+    return parts[0].strip(), (parts[1].strip() if len(parts) > 1 else "")
+
+
 def _png_from_qr_matrix(matrix: list, scale: int = 8) -> bytes:
     """把 qrcode 算出来的布尔矩阵直接编码成灰度 PNG。
 
@@ -655,10 +668,7 @@ class XianyuAutoDeliverPlugin(Star):
     @_guard
     async def cmd_help(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
         """``/闲鱼`` 给菜单，``/闲鱼 列表`` 给逐条详解。"""
-        raw = (event.message_str or "").strip().lstrip("/／!！")
-        parts = raw.split(maxsplit=1)
-        head = parts[0].strip() if parts else ""
-        arg = parts[1].strip() if len(parts) > 1 else ""
+        head, arg = _command_head_arg(event.message_str)
         lowered = arg.lower()
 
         # /闲鱼列表 这类没有空格的别名，等价于 /闲鱼 列表
