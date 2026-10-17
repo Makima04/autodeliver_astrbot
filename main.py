@@ -61,7 +61,7 @@ except ImportError:  # pragma: no cover
         parse_search_args,
     )
 
-PLUGIN_NAME = "astrbot_plugin_xianyu_autodeliver"
+PLUGIN_NAME = "autodeliver_astrbot"
 
 DEFAULTS: dict[str, Any] = {
     "base_url": "http://127.0.0.1:8080",

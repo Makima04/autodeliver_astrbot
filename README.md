@@ -28,28 +28,28 @@ QQ 用户 ──指令──▶ AstrBot ──▶ 本插件 ──HTTP/Bearer─
 2. 装进 AstrBot，三种方式任选：
 
    **A. WebUI 从仓库安装（推荐）**
-   插件管理 → 安装插件 → 填本仓库地址 `https://github.com/Makima04/astrbot_plugin_xianyu_autodeliver`，
+   插件管理 → 安装插件 → 填本仓库地址 `https://github.com/Makima04/autodeliver_astrbot`，
    AstrBot 会自动 clone 并安装 `requirements.txt`。
 
    **B. 服务器上手动 clone**
 
    ```bash
    cd /path/to/AstrBot/data/plugins
-   git clone https://github.com/Makima04/astrbot_plugin_xianyu_autodeliver.git
-   pip install -r astrbot_plugin_xianyu_autodeliver/requirements.txt
+   git clone https://github.com/Makima04/autodeliver_astrbot.git
+   pip install -r autodeliver_astrbot/requirements.txt
    ```
 
    **C. Docker 部署的 AstrBot**（容器内 pip 装依赖）
 
    ```bash
    HOST_DATA=/home/orangepi/astrbot/data          # 宿主机上挂到容器 /AstrBot/data 的目录
-   git clone https://github.com/Makima04/astrbot_plugin_xianyu_autodeliver.git \
-             $HOST_DATA/plugins/astrbot_plugin_xianyu_autodeliver
-   docker exec astrbot pip install -r /AstrBot/data/plugins/astrbot_plugin_xianyu_autodeliver/requirements.txt
+   git clone https://github.com/Makima04/autodeliver_astrbot.git \
+             $HOST_DATA/plugins/autodeliver_astrbot
+   docker exec astrbot pip install -r /AstrBot/data/plugins/autodeliver_astrbot/requirements.txt
    docker restart astrbot
    ```
 
-   开发期想「改完立刻生效」可以用软链：`ln -s $PWD <AstrBot>/data/plugins/astrbot_plugin_xianyu_autodeliver`，
+   开发期想「改完立刻生效」可以用软链：`ln -s $PWD <AstrBot>/data/plugins/autodeliver_astrbot`，
    改代码后在 WebUI 插件卡片点「重载插件」。
 
 3. 重启 AstrBot，在 WebUI → 插件 里找到「闲鱼自动发货（AutoDeliver）」，点开配置填写（见下）。
@@ -68,7 +68,7 @@ QQ 用户 ──指令──▶ AstrBot ──▶ 本插件 ──HTTP/Bearer─
 | `search_top_n` / `search_cooldown` | 展示条数、单人搜索冷却（防闲鱼限流） |
 | `qr_poll_timeout` | 扫码等待时间，默认 180 秒 |
 
-Token 保存在 `data/plugin_data/astrbot_plugin_xianyu_autodeliver/auth.json`（权限 600），
+Token 保存在 `data/plugin_data/autodeliver_astrbot/auth.json`（权限 600），
 重启 AstrBot 后自动复用；会话过期（401）时插件会用配置的账号密码自动重登一次。
 
 ---
@@ -173,7 +173,7 @@ AD_BASE=http://127.0.0.1:8080 AD_USER=admin AD_PASS=admin123 python tests/smoke_
 ## 八、目录
 
 ```
-astrbot_plugin_xianyu_autodeliver/
+autodeliver_astrbot/
 ├── main.py              # AstrBot 入口：指令、权限、二维码轮询、主动推送
 ├── api.py               # AutoDeliver REST 客户端（httpx，401 自动重登）
 ├── summary.py           # 参数解析 + QQ 文案 + 大模型 Prompt（纯函数，可单测）
