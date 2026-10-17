@@ -23,6 +23,14 @@ class _Filter:
 
         return deco
 
+    def regex(self, pattern: str, **kwargs):
+        def deco(func: Callable):
+            func._regex = pattern
+            func._regex_kwargs = kwargs
+            return func
+
+        return deco
+
     def event_message_type(self, *_args, **_kwargs):
         return lambda func: func
 
@@ -44,6 +52,22 @@ class _Result:
     chain: list[Any]
 
 
+class _StubHandler:
+    """替身 handler：只为模拟 event.activated_handlers 里的指令名。"""
+
+    def __init__(self, command_name: str) -> None:
+        self.handler_name = f"cmd_{command_name}"
+        self.event_filters = [_StubCommandFilter(command_name)]
+
+
+class _StubCommandFilter:
+    def __init__(self, command_name: str) -> None:
+        self.command_name = command_name
+
+    def get_complete_command_names(self) -> list[str]:
+        return [self.command_name]
+
+
 class AstrMessageEvent:
     """替身消息事件。"""
 
@@ -54,6 +78,8 @@ class AstrMessageEvent:
         sender_name: str = "测试用户",
         umo: str = "onebot:private_10001",
         private: bool = True,
+        raw: str | None = None,
+        activated_commands: list[str] | None = None,
     ) -> None:
         self.message_str = message_str
         self._sender_id = sender_id
@@ -62,6 +88,29 @@ class AstrMessageEvent:
         self._private = private
         self.sent: list[list[Any]] = []
         self._result: _Result | None = None
+        self._stopped = False
+        self.call_llm = False
+        self._extra: dict[str, Any] = {}
+        # message_obj.message_str 保存唤醒前缀被剥掉之前的原文（真实 AstrBot 行为）
+        self.message_obj = type("_MsgObj", (), {"message_str": raw if raw is not None else message_str})()
+        if activated_commands is not None:
+            self._extra["activated_handlers"] = [_StubHandler(name) for name in activated_commands]
+
+    # 管道相关
+    def get_extra(self, key: str, default: Any = None) -> Any:
+        return self._extra.get(key, default)
+
+    def set_extra(self, key: str, value: Any) -> None:
+        self._extra[key] = value
+
+    def stop_event(self) -> None:
+        self._stopped = True
+
+    def should_call_llm(self, call_llm: bool) -> None:
+        self.call_llm = call_llm
+
+    def is_stopped(self) -> bool:
+        return self._stopped
 
     # 插件用到的取值方法
     def get_sender_id(self) -> str:

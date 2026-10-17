@@ -54,6 +54,16 @@ QQ 用户 ──指令──▶ AstrBot ──▶ 本插件 ──HTTP/Bearer─
 
 3. 重启 AstrBot，在 WebUI → 插件 里找到「闲鱼自动发货（AutoDeliver）」，点开配置填写（见下）。
 
+> ⚠️ **`/` 必须出现在 AstrBot 的「唤醒前缀」里，否则指令永远不会触发。**
+> AstrBot 的指令过滤器要求消息先成为「唤醒命令」。如果唤醒前缀被改成了别的词
+> （比如某些人格配置把 `wake_prefix` 改成 `["浅野堇"]`），`/闲鱼扫码` 会被当成普通聊天
+> 丢给大模型，插件一条都收不到。
+>
+> - 在 WebUI（配置 → 其他配置 → 唤醒前缀）里把它改回 `["/"]`，或
+>   `["浅野堇", "/"]` 这样保留人格唤醒词、同时把 `/` 加回去。
+> - 插件自带兜底：`/` 开头但没有任何指令认领的消息会被直接吞掉（不会触发大模型），
+>   只有 `/闲鱼xxx` 这种明显是手误的才会回一句「没有这个指令」。
+
 ---
 
 ## 二、配置
@@ -186,6 +196,9 @@ AUTODELIVER_TOKEN=<config.toml 的 session_token> python tests/test_plugin_local
 # 3) 只测 HTTP 客户端
 python tests/smoke_api.py            # 默认搜 switch
 AD_BASE=http://127.0.0.1:8080 AD_USER=admin AD_PASS=... python tests/smoke_api.py
+
+# 4) 斜杠守卫（离线，验证 /未知指令 不会落到大模型）
+python tests/test_slash_guard.py
 ```
 
 `test_permissions.py` 覆盖：管理员/非管理员在私聊与群聊的判定、搜索三种模式、
@@ -199,6 +212,7 @@ AD_BASE=http://127.0.0.1:8080 AD_USER=admin AD_PASS=... python tests/smoke_api.p
 
 | 现象 | 排查 |
 |---|---|
+| 发 `/闲鱼xxx` 没反应，反而是大模型在回你 | **唤醒前缀里没有 `/`**。AstrBot 指挥令先成为唤醒命令，`wake_prefix` 被改成 `["浅野堇"]` 时 `/闲鱼x` 只会走大模型 |
 | `连不上 AutoDeliver` | `base_url` 写错、后端没起、端口不对；先 `curl <base_url>/` 看有没有 HTML |
 | `尚未登录 AutoDeliver` | 发 `/闲鱼登录`，或在配置里填 `api_token` / 账号密码 |
 | 扫码一直不动 | 插件目录装 `qrcode`；或看 AstrBot 日志里 `qrcode_poll` 的报错 |

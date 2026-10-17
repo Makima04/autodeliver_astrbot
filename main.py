@@ -317,6 +317,73 @@ class XianyuAutoDeliverPlugin(Star):
         umo = str(getattr(event, "unified_msg_origin", "") or "")
         return "private" in umo or "FriendMessage" in umo
 
+    # ------------------------------------------------------------ 斜杠指令守卫
+    @staticmethod
+    def _raw_message_text(event: AstrMessageEvent) -> str:
+        """取唤醒前缀被剥掉之前的原始文本。
+
+        AstrBot 的唤醒阶段会把 wake_prefix（现在含 ``/``）从 ``event.message_str``
+        里剥掉，所以判断「这条消息到底是不是斜杠开头」只能看 ``message_obj``。
+        """
+        obj = getattr(event, "message_obj", None)
+        raw = getattr(obj, "message_str", None) if obj is not None else None
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+        return ""
+
+    @staticmethod
+    def _matches_activated_command(event: AstrMessageEvent, body: str) -> bool:
+        """body 是否命中本次事件里某个已激活的指令过滤器。"""
+        try:
+            handlers = event.get_extra("activated_handlers") or []
+        except Exception:
+            return True  # 拿不到激活列表就放行，宁可让 LLM 回，也别把正常指令吃掉
+        body = body.strip()
+        if not body:
+            return False
+        for handler in handlers:
+            for event_filter in getattr(handler, "event_filters", []) or []:
+                getter = getattr(event_filter, "get_complete_command_names", None)
+                if getter is None:
+                    continue
+                try:
+                    names = getter()
+                except Exception:
+                    continue
+                for name in names or []:
+                    if body == name or body.startswith(f"{name} "):
+                        return True
+        return False
+
+    @filter.regex(r"^", priority=-999)
+    async def guard_unmatched_slash(self, event: AstrMessageEvent) -> AsyncGenerator[Any, None]:
+        """兜底：``/`` 开头但没有任何指令认领的消息，直接吞掉，不落到大模型。
+
+        没有这个守卫时，只要 wake_prefix 里含 ``/``，``/随便什么`` 都会唤醒
+        LLM 并让模型回一句毫无意义的话。这里只在「确实没有指令匹配」时拦截，
+        ``/help``、``/闲鱼扫码`` 这类正常指令不受影响。
+        """
+        raw = self._raw_message_text(event)
+        if not raw.startswith("/"):
+            return
+
+        body = raw.lstrip("/").strip()
+        if self._matches_activated_command(event, body):
+            return
+
+        # 既 stop_event 又禁止默认 LLM：只停 event 不够，AstrBot 在「无结果」时
+        # 仍会走 agent 分支，所以必须显式调用 should_call_llm(True)（语义是禁止默认 LLM）
+        event.stop_event()
+        try:
+            event.should_call_llm(True)
+        except Exception:
+            pass
+
+        if not body:
+            yield event.plain_result("发 /闲鱼 查看全部指令")
+        elif body.startswith(("闲鱼", "xy", "XY")):
+            yield event.plain_result(f"🤔 没有「{body}」这个指令，发 /闲鱼 查看菜单")
+
     def _qq_list(self, key: str) -> list[str]:
         """读取配置里的 QQ 号列表，兼容 list / 逗号分隔字符串 / UMO 写法。"""
         raw = self._cfg(key) or []
