@@ -23,8 +23,9 @@ import functools
 import json
 import os
 import time
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any, AsyncGenerator, Optional
+from typing import Any
 
 import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
@@ -175,7 +176,7 @@ def _png_from_qr_matrix(matrix: list, scale: int = 8) -> bytes:
 
 
 class XianyuAutoDeliverPlugin(Star):
-    def __init__(self, context: Context, config: Optional[AstrBotConfig] = None):
+    def __init__(self, context: Context, config: AstrBotConfig | None = None):
         super().__init__(context)
         self.config = config
         self.data_dir = self._resolve_data_dir()
@@ -258,7 +259,7 @@ class XianyuAutoDeliverPlugin(Star):
         except (TypeError, ValueError):
             return fallback
 
-    def _load_token(self) -> Optional[str]:
+    def _load_token(self) -> str | None:
         try:
             if self._token_path.exists():
                 data = json.loads(self._token_path.read_text("utf-8"))
@@ -318,7 +319,7 @@ class XianyuAutoDeliverPlugin(Star):
             ids.append(text)
         return ids
 
-    def _auth_error(self, event: AstrMessageEvent) -> Optional[str]:
+    def _auth_error(self, event: AstrMessageEvent) -> str | None:
         """返回 None 表示放行，否则返回拒绝理由。"""
         sender = str(event.get_sender_id())
         whitelist = self._admin_ids()
@@ -493,7 +494,7 @@ class XianyuAutoDeliverPlugin(Star):
             return False
 
     async def _poll_qrcode(
-        self, umo: str, t: str, ck: str, session_cookies: Optional[str]
+        self, umo: str, t: str, ck: str, session_cookies: str | None
     ) -> None:
         interval = self._cfg_num("qr_poll_interval", 3)
         deadline = time.monotonic() + self._cfg_num("qr_poll_timeout", 180)

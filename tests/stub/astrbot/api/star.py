@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 _TMP_ROOT = Path("/tmp/astrbot_stub_data")
 
@@ -16,7 +16,7 @@ class Star:
 
 class StarTools:
     @staticmethod
-    def get_data_dir(name: Optional[str] = None) -> Path:
+    def get_data_dir(name: str | None = None) -> Path:
         path = _TMP_ROOT / (name or "unknown")
         path.mkdir(parents=True, exist_ok=True)
         return path

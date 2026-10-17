@@ -3,5 +3,8 @@ line-length = 100
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B"]
+# 只留真正能抓 bug 的规则：语法 / 未定义名 / 未使用导入 / 导入顺序 / 常见陷阱。
+# 不启用 UP（pyupgrade）：它会把 Optional[X] 改成 X | None，而插件要兼容
+# AstrBot 镜像里可能存在的较旧 Python 运行时。
+select = ["E", "F", "W", "I", "B"]
 ignore = ["E501"]

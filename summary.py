@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any
 
 # --------------------------------------------------------------------- 参数解析
 
@@ -19,7 +19,7 @@ SORT_ALIASES = {
 _NUM_RE = re.compile(r"^-?\d+(\.\d+)?$")
 
 
-def _to_float(value: str) -> Optional[float]:
+def _to_float(value: str) -> float | None:
     value = value.strip().replace("¥", "").replace("元", "")
     return float(value) if _NUM_RE.match(value) else None
 
@@ -86,7 +86,7 @@ def parse_search_args(raw: str) -> tuple[str, dict]:
     return " ".join(keyword_parts).strip(), opts
 
 
-def parse_price_range(raw: str) -> tuple[Optional[float], Optional[float]]:
+def parse_price_range(raw: str) -> tuple[float | None, float | None]:
     """支持 ``100-500`` / ``100~500`` 的简写价格区间。"""
     if not raw:
         return None, None
@@ -137,7 +137,7 @@ def format_accounts(accounts: list) -> str:
     return "\n".join(lines)
 
 
-def format_status(accounts: list, stats: Optional[dict], token_ok: bool, base_url: str) -> str:
+def format_status(accounts: list, stats: dict | None, token_ok: bool, base_url: str) -> str:
     lines = [f"🩺 AutoDeliver 状态（{base_url}）", f"管理端登录：{'✅ 已登录' if token_ok else '❌ 未登录'}"]
     if accounts:
         verified = sum(1 for a in accounts if str(a.get("status")) == "verified")
@@ -262,7 +262,7 @@ def build_fallback_summary(keyword: str, stats: dict, items: list) -> str:
     return "\n".join(lines)
 
 
-def build_llm_prompt(keyword: str, stats: dict, items: list, opts: Optional[dict] = None) -> str:
+def build_llm_prompt(keyword: str, stats: dict, items: list, opts: dict | None = None) -> str:
     """给大模型的输入：结构化但足够紧凑，避免 30 条长标题把上下文撑爆。"""
     opts = opts or {}
     lines = [

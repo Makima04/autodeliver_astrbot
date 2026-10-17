@@ -10,7 +10,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 import httpx
 
@@ -21,7 +22,7 @@ class ApiError(Exception):
     def __init__(
         self,
         message: str,
-        status_code: Optional[int] = None,
+        status_code: int | None = None,
         payload: Any = None,
     ) -> None:
         super().__init__(message)
@@ -41,17 +42,17 @@ class AutoDeliverClient:
     def __init__(
         self,
         base_url: str,
-        token: Optional[str] = None,
-        username: Optional[str] = None,
-        password: Optional[str] = None,
+        token: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
         timeout: float = 30.0,
-        on_token: Optional[Callable[[str], None]] = None,
+        on_token: Callable[[str], None] | None = None,
     ) -> None:
         self.base_url = (base_url or "http://127.0.0.1:8080").rstrip("/")
         self.username = (username or "").strip() or None
         self.password = password or None
         self.timeout = timeout
-        self._token: Optional[str] = (token or "").strip() or None
+        self._token: str | None = (token or "").strip() or None
         self._on_token = on_token
         self._login_lock = asyncio.Lock()
         self._http = httpx.AsyncClient(
@@ -62,10 +63,10 @@ class AutoDeliverClient:
 
     # ------------------------------------------------------------------ 基础
     @property
-    def token(self) -> Optional[str]:
+    def token(self) -> str | None:
         return self._token
 
-    def set_token(self, token: Optional[str], persist: bool = True) -> None:
+    def set_token(self, token: str | None, persist: bool = True) -> None:
         self._token = (token or "").strip() or None
         if persist and self._token and self._on_token:
             try:
@@ -142,7 +143,7 @@ class AutoDeliverClient:
         await self.login()
 
     # ------------------------------------------------------------------ 认证
-    async def login(self, username: Optional[str] = None, password: Optional[str] = None) -> dict:
+    async def login(self, username: str | None = None, password: str | None = None) -> dict:
         """管理员登录，成功后缓存并持久化 token。"""
         user = (username or self.username or "").strip()
         pwd = password or self.password or ""
@@ -197,7 +198,7 @@ class AutoDeliverClient:
     async def login_cookie(
         self,
         raw_cookie: str,
-        seller_nick: Optional[str] = None,
+        seller_nick: str | None = None,
     ) -> dict:
         """Cookie 登录：写入 / 更新一个闲鱼账号（后端按 seller_id 复用同一账号）。"""
         await self.ensure_token()
@@ -230,7 +231,7 @@ class AutoDeliverClient:
         return await self._request("POST", "/api/xianyu/qrcode/generate")
 
     async def qrcode_poll(
-        self, t: str, ck: str, session_cookies: Optional[str] = None
+        self, t: str, ck: str, session_cookies: str | None = None
     ) -> dict:
         await self.ensure_token()
         return await self._request(
@@ -243,10 +244,10 @@ class AutoDeliverClient:
     async def search(
         self,
         keyword: str,
-        account_id: Optional[int] = None,
-        min_price_yuan: Optional[float] = None,
-        max_price_yuan: Optional[float] = None,
-        sort_by: Optional[str] = None,
+        account_id: int | None = None,
+        min_price_yuan: float | None = None,
+        max_price_yuan: float | None = None,
+        sort_by: str | None = None,
     ) -> dict:
         await self.ensure_token()
         payload: dict[str, Any] = {"keyword": keyword.strip()}
@@ -272,7 +273,7 @@ class AutoDeliverClient:
         )
 
     # ------------------------------------------------------------------ 发货 / 订单
-    async def scan_auto_deliver(self, account_id: Optional[int] = None) -> dict:
+    async def scan_auto_deliver(self, account_id: int | None = None) -> dict:
         await self.ensure_token()
         payload = {"account_id": int(account_id)} if account_id else {}
         return await self._request("POST", "/api/xianyu/auto-deliver/scan", json=payload) or {}

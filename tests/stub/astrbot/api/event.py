@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 
 class _Filter:
@@ -90,7 +91,7 @@ class MessageChain:
     def __init__(self) -> None:
         self.parts: list[str] = []
 
-    def message(self, text: str) -> "MessageChain":
+    def message(self, text: str) -> MessageChain:
         self.parts.append(text)
         return self
 

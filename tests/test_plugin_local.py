@@ -15,9 +15,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "stub"))  # 假的 astrbot 包
 sys.path.insert(0, str(HERE.parent))  # 真插件
 
-import main as plugin_main  # noqa: E402
 from astrbot.api.event import AstrMessageEvent, ProviderResponse  # noqa: E402
 from astrbot.api.star import Context  # noqa: E402
+
+import main as plugin_main  # noqa: E402
 
 
 class FakeProvider:

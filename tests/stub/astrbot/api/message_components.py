@@ -14,11 +14,11 @@ class Image:
     url: str = ""
 
     @classmethod
-    def fromFileSystem(cls, path: str) -> "Image":
+    def fromFileSystem(cls, path: str) -> Image:
         return cls(path=path)
 
     @classmethod
-    def fromURL(cls, url: str) -> "Image":
+    def fromURL(cls, url: str) -> Image:
         return cls(url=url)
 
 
